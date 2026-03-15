@@ -94,13 +94,11 @@ class LocalUpdateServerManager:
         self._thread: Thread | None = None
 
     def register_hooks(self) -> None:
-        if self.start_from_current_config not in gui_hooks.profile_did_open:
-            gui_hooks.profile_did_open.append(self.start_from_current_config)
-        if (
-            hasattr(gui_hooks, "profile_will_close")
-            and self.stop not in gui_hooks.profile_will_close
-        ):
-            gui_hooks.profile_will_close.append(self.stop)
+        _replace_hook_callback(
+            gui_hooks.profile_did_open, self.start_from_current_config
+        )
+        if hasattr(gui_hooks, "profile_will_close"):
+            _replace_hook_callback(gui_hooks.profile_will_close, self.stop)
 
     def start_from_current_config(self, *args: Any) -> None:
         if not getattr(mw, "col", None):
@@ -226,3 +224,26 @@ server_manager = LocalUpdateServerManager()
 
 def register_server_hooks() -> None:
     server_manager.register_hooks()
+
+
+def _replace_hook_callback(hook: list[Any], callback: Any) -> None:
+    callback_key = _callback_key(callback)
+    hook[:] = [existing for existing in hook if _callback_key(existing) != callback_key]
+    hook.append(callback)
+
+
+def _callback_key(callback: Any) -> tuple[str | None, str | None, str | None]:
+    bound_function = getattr(callback, "__func__", None)
+    bound_self = getattr(callback, "__self__", None)
+    if bound_function is not None and bound_self is not None:
+        owner_type = type(bound_self)
+        return (
+            owner_type.__module__,
+            owner_type.__qualname__,
+            bound_function.__name__,
+        )
+    return (
+        getattr(callback, "__module__", None),
+        getattr(callback, "__qualname__", getattr(callback, "__name__", None)),
+        None,
+    )

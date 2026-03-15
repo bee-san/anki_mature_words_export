@@ -85,3 +85,28 @@ def test_query_helpers_and_note_helpers(addon_env) -> None:
         known_words.build_scope_query(config) == 'deck:"Deck \\"One\\"" -is:suspended'
     )
     assert known_words._join_query_parts(["a", None, "b"]) == "a b"
+
+
+def test_build_known_word_list_handles_blank_html_and_case_sensitive_terms(
+    addon_env,
+) -> None:
+    config_mod = addon_env.import_module("config")
+    known_words = addon_env.import_module("known_words")
+    config = config_mod.AddonConfig(
+        deck_name="Deck\\Name",
+        field_name="Expression",
+    )
+    query = known_words.build_mature_query(config)
+    col = FakeCollection(
+        search_results={query: [1]},
+        cards={1: FakeCard(10)},
+        notes={10: {"Expression": "<div> </div>\nCat\n cat \nCat\n\n"}},
+        deck_names=["Deck\\Name"],
+    )
+
+    words, stats = known_words.build_known_word_list(col, config)
+
+    assert words == ["Cat", "cat"]
+    assert stats["wordCount"] == 2
+    assert known_words.escape_search_term("Deck\\Name") == "Deck\\\\Name"
+    assert known_words.build_scope_query(config) == 'deck:"Deck\\\\Name" -is:suspended'

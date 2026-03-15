@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 import types
 
 from conftest import FakeCard, FakeCollection, FakeToolbar
@@ -155,6 +156,24 @@ def test_register_toolbar_and_add_link(addon_env) -> None:
     ui._add_toolbar_link(links, toolbar)
     assert links == ["<a>Bee's Anki Exporter</a>"]
     assert toolbar.created_links[0][0] == "bees_anki_exporter"
+
+
+def test_register_toolbar_link_replaces_stale_reload_callback(addon_env) -> None:
+    first_ui = addon_env.import_module("ui")
+    first_ui.register_toolbar_link()
+    first_callback = sys.modules["aqt"].gui_hooks.top_toolbar_did_init_links[0]
+
+    for name in list(sys.modules):
+        if name == "anki_mature_words_export" or name.startswith(
+            "anki_mature_words_export."
+        ):
+            sys.modules.pop(name, None)
+
+    second_ui = addon_env.import_module("ui")
+    second_ui.register_toolbar_link()
+    callbacks = sys.modules["aqt"].gui_hooks.top_toolbar_did_init_links
+    assert callbacks == [second_ui._add_toolbar_link]
+    assert callbacks[0] is not first_callback
 
 
 def test_open_main_dialog_and_ensure_configured(addon_env, monkeypatch) -> None:

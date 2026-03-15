@@ -24,10 +24,11 @@ class DictionaryArtifacts:
 def build_dictionary_artifacts(
     words: list[str], config: AddonConfig
 ) -> DictionaryArtifacts:
-    revision = compute_revision(words)
+    normalized_words = _normalize_words(words)
+    revision = compute_revision(normalized_words)
     index_data = build_index_data(config, revision)
     index_bytes = _json_bytes(index_data)
-    zip_bytes = build_yomitan_zip(words, config, revision)
+    zip_bytes = build_yomitan_zip(normalized_words, config, revision)
     return DictionaryArtifacts(
         revision=revision,
         index_data=index_data,
@@ -37,9 +38,10 @@ def build_dictionary_artifacts(
 
 
 def compute_revision(words: list[str]) -> str:
-    joined = "\n".join(words).encode("utf-8")
+    normalized_words = _normalize_words(words)
+    joined = "\n".join(normalized_words).encode("utf-8")
     digest = sha256(joined).hexdigest()
-    return f"knownfreq-{digest[:16]}-{len(words)}"
+    return f"knownfreq-{digest[:16]}-{len(normalized_words)}"
 
 
 def build_index_data(config: AddonConfig, revision: str) -> dict[str, object]:
@@ -57,16 +59,17 @@ def build_index_data(config: AddonConfig, revision: str) -> dict[str, object]:
 
 
 def build_yomitan_zip(words: list[str], config: AddonConfig, revision: str) -> bytes:
+    normalized_words = _normalize_words(words)
     output = BytesIO()
     with ZipFile(output, "w", compression=ZIP_DEFLATED) as archive:
         archive.writestr("index.json", _json_text(build_index_data(config, revision)))
-        for file_name, entries in build_term_meta_banks(words):
+        for file_name, entries in build_term_meta_banks(normalized_words):
             archive.writestr(file_name, _json_text(entries))
     return output.getvalue()
 
 
 def build_term_meta_banks(words: list[str]) -> list[tuple[str, list[list[object]]]]:
-    entries = [[word, "freq", 1] for word in words]
+    entries = [[word, "freq", 1] for word in _normalize_words(words)]
     if not entries:
         return [("term_meta_bank_1.json", [])]
 
@@ -83,3 +86,7 @@ def _json_bytes(value: object) -> bytes:
 
 def _json_text(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _normalize_words(words: list[str]) -> list[str]:
+    return sorted(dict.fromkeys(words))

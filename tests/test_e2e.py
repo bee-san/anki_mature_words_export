@@ -9,6 +9,7 @@ from urllib.request import urlopen
 from zipfile import ZipFile
 
 from conftest import FakeCard, FakeCollection, FakeToolbar
+from tests.yomitan_validation import validate_dictionary_archive, validate_index_data
 
 
 def _find_free_port() -> int:
@@ -172,23 +173,21 @@ def test_e2e_profile_start_generate_zip_and_serve_live_endpoints(
 
         saved_path = Path(addon_env.state.save_file_path)
         assert saved_path.exists()
-        with ZipFile(saved_path) as saved_zip:
-            assert sorted(saved_zip.namelist()) == [
-                "index.json",
-                "term_meta_bank_1.json",
-            ]
-            assert json.loads(
-                saved_zip.read("term_meta_bank_1.json").decode("utf-8")
-            ) == [
-                ["犬", "freq", 1],
-                ["猫", "freq", 1],
-                ["鳥", "freq", 1],
-            ]
+        saved_index, saved_entries, saved_names = validate_dictionary_archive(
+            saved_path.read_bytes()
+        )
+        assert saved_names == ["index.json", "term_meta_bank_1.json"]
+        assert saved_entries == [
+            ["犬", "freq", 1],
+            ["猫", "freq", 1],
+            ["鳥", "freq", 1],
+        ]
 
         index_bytes = _wait_for_url(
             f"http://127.0.0.1:{port}/bees-yomitan-known/index.json"
         )
         index_data = json.loads(index_bytes.decode("utf-8"))
+        validate_index_data(index_data)
         assert (
             index_data["downloadUrl"]
             == f"http://127.0.0.1:{port}/bees-yomitan-known/dictionary.zip"
@@ -197,6 +196,9 @@ def test_e2e_profile_start_generate_zip_and_serve_live_endpoints(
 
         live_zip_bytes = _wait_for_url(
             f"http://127.0.0.1:{port}/bees-yomitan-known/dictionary.zip"
+        )
+        live_index, live_entries, live_names = validate_dictionary_archive(
+            live_zip_bytes
         )
 
         with (
@@ -214,6 +216,9 @@ def test_e2e_profile_start_generate_zip_and_serve_live_endpoints(
                 json.loads(live_zip.read("index.json").decode("utf-8"))["revision"]
                 == index_data["revision"]
             )
+        assert saved_index == live_index == index_data
+        assert saved_entries == live_entries
+        assert saved_names == live_names
 
         server.server_manager.stop()
         assert server.server_manager._server is None

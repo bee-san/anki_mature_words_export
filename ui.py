@@ -312,8 +312,7 @@ class ExporterDialog(QDialog):
 
 
 def register_toolbar_link() -> None:
-    if _add_toolbar_link not in gui_hooks.top_toolbar_did_init_links:
-        gui_hooks.top_toolbar_did_init_links.append(_add_toolbar_link)
+    _replace_hook_callback(gui_hooks.top_toolbar_did_init_links, _add_toolbar_link)
 
 
 def open_main_dialog() -> None:
@@ -350,3 +349,16 @@ def _ensure_configured() -> AddonConfig | None:
         if wizard.exec() != QDialog.DialogCode.Accepted:
             return None
         return wizard.saved_config
+
+
+def _replace_hook_callback(hook: list[Any], callback: Any) -> None:
+    callback_key = _callback_key(callback)
+    hook[:] = [existing for existing in hook if _callback_key(existing) != callback_key]
+    hook.append(callback)
+
+
+def _callback_key(callback: Any) -> tuple[str | None, str | None]:
+    return (
+        getattr(callback, "__module__", None),
+        getattr(callback, "__qualname__", getattr(callback, "__name__", None)),
+    )

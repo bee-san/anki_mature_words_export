@@ -62,6 +62,7 @@ def test_register_server_hooks_and_init_registration(addon_env) -> None:
     addon_env.import_package()
     assert len(sys.modules["aqt"].gui_hooks.top_toolbar_did_init_links) == 1
     assert len(sys.modules["aqt"].gui_hooks.profile_did_open) == 1
+    assert len(sys.modules["aqt"].gui_hooks.profile_will_close) == 1
 
     server = addon_env.import_module("server")
     manager = server.LocalUpdateServerManager()
@@ -76,6 +77,44 @@ def test_register_server_hooks_and_init_registration(addon_env) -> None:
             manager.start_from_current_config
         )
         == 1
+    )
+    assert sys.modules["aqt"].gui_hooks.profile_will_close.count(manager.stop) == 1
+
+
+def test_register_server_hooks_replaces_stale_reload_callbacks(addon_env) -> None:
+    first_server = addon_env.import_module("server")
+    first_server.register_server_hooks()
+    first_open = sys.modules["aqt"].gui_hooks.profile_did_open[0]
+    first_close = sys.modules["aqt"].gui_hooks.profile_will_close[0]
+
+    for name in list(sys.modules):
+        if name == "anki_mature_words_export" or name.startswith(
+            "anki_mature_words_export."
+        ):
+            sys.modules.pop(name, None)
+
+    second_server = addon_env.import_module("server")
+    second_server.register_server_hooks()
+    assert sys.modules["aqt"].gui_hooks.profile_did_open == [
+        second_server.server_manager.start_from_current_config
+    ]
+    assert sys.modules["aqt"].gui_hooks.profile_will_close == [
+        second_server.server_manager.stop
+    ]
+    assert sys.modules["aqt"].gui_hooks.profile_did_open[0] is not first_open
+    assert sys.modules["aqt"].gui_hooks.profile_will_close[0] is not first_close
+
+
+def test_server_callback_key_handles_plain_functions(addon_env) -> None:
+    server = addon_env.import_module("server")
+
+    def plain_callback() -> None:
+        return
+
+    assert server._callback_key(plain_callback) == (
+        __name__,
+        "test_server_callback_key_handles_plain_functions.<locals>.plain_callback",
+        None,
     )
 
 
