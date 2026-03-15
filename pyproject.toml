@@ -1,0 +1,14 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.coverage.run]
+source = ["."]
+omit = ["tests/*", "run_pytest.py"]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true

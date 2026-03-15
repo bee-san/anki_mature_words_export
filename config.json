@@ -1,0 +1,9 @@
+{
+  "deckName": "",
+  "matureDays": 21,
+  "fieldName": "Expression",
+  "httpPort": 8766,
+  "includeSuspended": false,
+  "dedupeStrategy": "case_sensitive_trim",
+  "noteCardRule": "any_mature_card"
+}
