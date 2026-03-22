@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import importlib
-import io
 from pathlib import Path
 import re
 import sys
@@ -130,6 +129,53 @@ class QDialog(FakeWidget):
     def exec(self) -> int:
         self.exec_calls += 1
         return self.exec_result
+
+
+class QAction(FakeWidget):
+    def __init__(self, text: str = "", *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._text = text
+        self.triggered = FakeSignal()
+        self._menu: QMenu | None = None
+
+    def text(self) -> str:
+        return self._text
+
+    def menu(self) -> "QMenu | None":
+        return self._menu
+
+    def trigger(self) -> None:
+        self.triggered.emit()
+
+
+class QMenu(FakeWidget):
+    def __init__(self, title: str = "", *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._title = title
+        self._actions: list[QAction] = []
+        self._menu_action = QAction(title, self)
+        self._menu_action._menu = self
+
+    def title(self) -> str:
+        return self._title
+
+    def addAction(self, action: QAction) -> QAction:
+        self._actions.append(action)
+        return action
+
+    def addMenu(self, menu: "QMenu") -> QAction:
+        action = menu.menuAction()
+        self._actions.append(action)
+        return action
+
+    def actions(self) -> list[QAction]:
+        return list(self._actions)
+
+    def removeAction(self, action: QAction) -> None:
+        self._actions = [existing for existing in self._actions if existing is not action]
+
+    def menuAction(self) -> QAction:
+        return self._menu_action
 
 
 class QFrame(FakeWidget):
@@ -374,6 +420,7 @@ class StubEnvironment:
             sys.path.insert(0, str(REPO_ROOT.parent))
 
         qt_module = types.ModuleType("aqt.qt")
+        qt_module.QAction = QAction
         qt_module.QApplication = QApplication
         qt_module.QComboBox = QComboBox
         qt_module.QDialog = QDialog
@@ -381,6 +428,7 @@ class StubEnvironment:
         qt_module.QHBoxLayout = QHBoxLayout
         qt_module.QLabel = QLabel
         qt_module.QLineEdit = QLineEdit
+        qt_module.QMenu = QMenu
         qt_module.QPushButton = QPushButton
         qt_module.QSizePolicy = QSizePolicy
         qt_module.QSpinBox = QSpinBox
@@ -418,6 +466,7 @@ class StubEnvironment:
         aqt_module.mw = types.SimpleNamespace(
             addonManager=FakeAddonManager(self.state),
             col=FakeCollection(deck_names=["Default"]),
+            form=types.SimpleNamespace(menuTools=QMenu("Tools")),
             taskman=FakeTaskMan(self.state),
         )
         self.state.mw = aqt_module.mw

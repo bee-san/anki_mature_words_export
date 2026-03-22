@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 import types
 
-from conftest import FakeCard, FakeCollection, FakeToolbar
+from conftest import FakeCard, FakeCollection
 
 
 def build_word_collection(
@@ -21,6 +21,20 @@ def build_word_collection(
     return FakeCollection(
         search_results=results, cards=cards, notes=notes, deck_names=["Deck"]
     )
+
+
+def get_exporter_menu(addon_env):
+    menu_action = addon_env.state.mw.form.menuTools.actions()[0]
+    menu = menu_action.menu()
+    assert menu is not None
+    return menu
+
+
+def find_action(menu, label: str):
+    for action in menu.actions():
+        if action.text() == label:
+            return action
+    raise AssertionError(f"Missing action: {label}")
 
 
 def test_first_run_wizard_validation_and_success(addon_env) -> None:
@@ -82,8 +96,13 @@ def test_exporter_dialog_misc_paths(addon_env) -> None:
         )
     )
     assert dialog._default_dictionary_name() == "bee-known-words-Deck_Name.zip"
+    assert ui._default_dictionary_name(config) == "bee-known-words-Deck_Name.zip"
     weird_dialog = ui.ExporterDialog(None, config_mod.AddonConfig(deck_name="!!!"))
     assert weird_dialog._default_dictionary_name() == "bee-known-words-deck.zip"
+    assert (
+        ui._default_dictionary_name(config_mod.AddonConfig(deck_name="!!!"))
+        == "bee-known-words-deck.zip"
+    )
     dialog._set_busy(True)
     assert dialog._generate_button.enabled is False
     dialog._set_busy(False)
@@ -144,24 +163,27 @@ def test_exporter_dialog_generate_save_error(
     )
 
 
-def test_register_toolbar_and_add_link(addon_env) -> None:
+def test_register_tools_menu_creates_submenu_and_actions(addon_env) -> None:
     ui = addon_env.import_module("ui")
-    ui.register_toolbar_link()
-    ui.register_toolbar_link()
-    assert (
-        len(__import__("sys").modules["aqt"].gui_hooks.top_toolbar_did_init_links) == 1
-    )
-    toolbar = FakeToolbar()
-    links: list[str] = []
-    ui._add_toolbar_link(links, toolbar)
-    assert links == ["<a>Bee's Anki Exporter</a>"]
-    assert toolbar.created_links[0][0] == "bees_anki_exporter"
+    ui.register_tools_menu()
+    ui.register_tools_menu()
+
+    actions = addon_env.state.mw.form.menuTools.actions()
+    assert len(actions) == 1
+    assert actions[0].text() == ui.TOOLS_MENU_TITLE
+
+    submenu = get_exporter_menu(addon_env)
+    assert [action.text() for action in submenu.actions()] == [
+        ui.GENERATE_ACTION_LABEL,
+        ui.CLIPBOARD_ACTION_LABEL,
+        ui.RERUN_WIZARD_ACTION_LABEL,
+    ]
 
 
-def test_register_toolbar_link_replaces_stale_reload_callback(addon_env) -> None:
+def test_register_tools_menu_replaces_stale_reload_menu(addon_env) -> None:
     first_ui = addon_env.import_module("ui")
-    first_ui.register_toolbar_link()
-    first_callback = sys.modules["aqt"].gui_hooks.top_toolbar_did_init_links[0]
+    first_ui.register_tools_menu()
+    first_menu = get_exporter_menu(addon_env)
 
     for name in list(sys.modules):
         if name == "anki_mature_words_export" or name.startswith(
@@ -170,39 +192,43 @@ def test_register_toolbar_link_replaces_stale_reload_callback(addon_env) -> None
             sys.modules.pop(name, None)
 
     second_ui = addon_env.import_module("ui")
-    second_ui.register_toolbar_link()
-    callbacks = sys.modules["aqt"].gui_hooks.top_toolbar_did_init_links
-    assert callbacks == [second_ui._add_toolbar_link]
-    assert callbacks[0] is not first_callback
+    second_ui.register_tools_menu()
+
+    actions = addon_env.state.mw.form.menuTools.actions()
+    assert len(actions) == 1
+    second_menu = actions[0].menu()
+    assert second_menu is not None
+    assert second_menu is not first_menu
 
 
-def test_open_main_dialog_and_ensure_configured(addon_env, monkeypatch) -> None:
+def test_export_actions_and_ensure_configured(addon_env, monkeypatch) -> None:
     ui = addon_env.import_module("ui")
     config_mod = addon_env.import_module("config")
+    known_words = addon_env.import_module("known_words")
     original_ensure_configured = ui._ensure_configured
 
     addon_env.state.mw.col = None
-    ui.open_main_dialog()
+    ui.export_known_words_to_clipboard()
     assert "Open a profile and collection" in addon_env.state.warnings[-1][0]
 
-    addon_env.state.mw.col = FakeCollection(deck_names=["Deck"])
+    addon_env.state.mw.col = build_word_collection(known_words)
     monkeypatch.setattr(ui, "_ensure_configured", lambda: None)
-    ui.open_main_dialog()
-
-    opened: list[object] = []
-
-    class FakeDialog:
-        def __init__(self, parent, config) -> None:
-            opened.append((parent, config))
-
-        def exec(self) -> None:
-            opened.append("exec")
+    ui.export_known_words_to_clipboard()
+    assert addon_env.state.query_ops == []
 
     config = config_mod.AddonConfig(deck_name="Deck")
+    apply_calls: list[object] = []
     monkeypatch.setattr(ui, "_ensure_configured", lambda: config)
-    monkeypatch.setattr(ui, "ExporterDialog", FakeDialog)
-    ui.open_main_dialog()
-    assert opened[-1] == "exec"
+    monkeypatch.setattr(
+        ui.server_manager,
+        "apply_config",
+        lambda cfg: apply_calls.append(cfg) or True,
+    )
+    ui.export_known_words_to_clipboard()
+    ui.generate_yomitan_dictionary()
+    assert apply_calls == [config, config, config]
+    assert addon_env.state.query_ops[-2].progress_label == "Building known-word list..."
+    assert addon_env.state.query_ops[-1].progress_label == "Building Yomitan dictionary..."
 
     monkeypatch.setattr(ui, "load_config", lambda col: config)
     assert original_ensure_configured() == config
@@ -227,3 +253,32 @@ def test_open_main_dialog_and_ensure_configured(addon_env, monkeypatch) -> None:
     assert original_ensure_configured() == config
     monkeypatch.setattr(ui, "FirstRunWizard", RejectWizard)
     assert original_ensure_configured() is None
+
+
+def test_rerun_setup_wizard_action(addon_env, monkeypatch) -> None:
+    ui = addon_env.import_module("ui")
+    config_mod = addon_env.import_module("config")
+    known_words = addon_env.import_module("known_words")
+
+    addon_env.state.mw.col = None
+    ui.rerun_setup_wizard()
+    assert "Open a profile and collection" in addon_env.state.warnings[-1][0]
+
+    addon_env.state.mw.col = build_word_collection(known_words)
+    opened: list[tuple[object, object, object]] = []
+
+    class FakeWizard:
+        def __init__(self, parent, seed_config, deck_names) -> None:
+            opened.append((parent, seed_config, deck_names))
+
+        def exec(self) -> int:
+            opened.append(("exec", None, None))
+            return ui.QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(ui, "FirstRunWizard", FakeWizard)
+    ui.rerun_setup_wizard()
+
+    assert opened[0][0] is addon_env.state.mw
+    assert opened[0][1] == config_mod.build_wizard_seed_config(addon_env.state.mw.col)
+    assert opened[0][2] == ["Deck"]
+    assert opened[1] == ("exec", None, None)

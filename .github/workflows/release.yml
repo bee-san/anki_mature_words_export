@@ -1,0 +1,105 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release main snapshot
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check Out Repository
+        uses: actions/checkout@v4
+
+      - name: Set Up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install Test Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Check Formatting With Ruff
+        run: |
+          ruff format --check .
+
+      - name: Run Tests With Coverage
+        run: |
+          python -m coverage run run_pytest.py
+          python -m coverage report -m
+
+      - name: Set Release Metadata
+        shell: bash
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          TAG="main-${GITHUB_SHA}"
+          TITLE="Main snapshot ${SHORT_SHA}"
+          ASSET_NAME="anki_mature_words_export.ankiaddon"
+
+          {
+            echo "SHORT_SHA=${SHORT_SHA}"
+            echo "TAG=${TAG}"
+            echo "TITLE=${TITLE}"
+            echo "ASSET_NAME=${ASSET_NAME}"
+          } >> "$GITHUB_ENV"
+
+      - name: Build .ankiaddon package
+        shell: bash
+        run: |
+          mkdir -p dist
+          rm -f "dist/${ASSET_NAME}"
+
+          zip -r "dist/${ASSET_NAME}" \
+            __init__.py \
+            config.json \
+            config.md \
+            config.py \
+            known_words.py \
+            manifest.json \
+            server.py \
+            ui.py \
+            yomitan_dict.py
+
+      - name: Upload Release Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ASSET_NAME }}
+          path: dist/${{ env.ASSET_NAME }}
+
+      - name: Create Or Update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          notes_file="$(mktemp)"
+
+          {
+            echo "Automated main-branch snapshot for commit ${GITHUB_SHA}."
+            echo
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "- Asset: \`${ASSET_NAME}\`"
+          } > "$notes_file"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "dist/${ASSET_NAME}" --clobber
+            gh release edit "$TAG" --title "$TITLE" --notes-file "$notes_file" --prerelease
+          else
+            gh release create \
+              "$TAG" \
+              "dist/${ASSET_NAME}" \
+              --title "$TITLE" \
+              --notes-file "$notes_file" \
+              --prerelease
+          fi

@@ -60,7 +60,8 @@ def make_handler(server_mod, manager) -> tuple[object, dict[str, object]]:
 
 def test_register_server_hooks_and_init_registration(addon_env) -> None:
     addon_env.import_package()
-    assert len(sys.modules["aqt"].gui_hooks.top_toolbar_did_init_links) == 1
+    assert len(sys.modules["aqt"].gui_hooks.top_toolbar_did_init_links) == 0
+    assert len(addon_env.state.mw.form.menuTools.actions()) == 1
     assert len(sys.modules["aqt"].gui_hooks.profile_did_open) == 1
     assert len(sys.modules["aqt"].gui_hooks.profile_will_close) == 1
 

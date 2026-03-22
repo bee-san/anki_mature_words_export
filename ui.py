@@ -3,9 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from aqt import gui_hooks, mw
+from aqt import mw
 from aqt.operations import QueryOp
 from aqt.qt import (
+    QAction,
     QApplication,
     QComboBox,
     QDialog,
@@ -13,13 +14,13 @@ from aqt.qt import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
     QPushButton,
     QSizePolicy,
     QSpinBox,
     QStackedWidget,
     QVBoxLayout,
 )
-from aqt.toolbar import Toolbar
 from aqt.utils import getSaveFile, showWarning, tooltip
 
 from .config import (
@@ -35,7 +36,11 @@ from .known_words import KnownWordBuildError, build_known_word_list
 from .server import server_manager
 from .yomitan_dict import DictionaryArtifacts, build_dictionary_artifacts
 
-TOOLBAR_COMMAND = "bees_anki_exporter"
+TOOLS_MENU_TITLE = "Bee's Anki Exporter"
+GENERATE_ACTION_LABEL = "Generate Auto-Updating Yomitan Frequency Dictionary"
+CLIPBOARD_ACTION_LABEL = "Export Known Words to Clipboard"
+RERUN_WIZARD_ACTION_LABEL = "Rerun Wizard"
+TOOLS_MENU_ATTR = "_bees_anki_exporter_tools_menu"
 
 
 class FirstRunWizard(QDialog):
@@ -177,11 +182,8 @@ class ExporterDialog(QDialog):
     def __init__(self, parent: Any, config: AddonConfig) -> None:
         super().__init__(parent)
         self._config = config
-        self._clipboard_button = QPushButton("Export known words to Clipboard", self)
-        self._generate_button = QPushButton(
-            "Generate Auto-Updating Yomitan Frequency Dictionary",
-            self,
-        )
+        self._clipboard_button = QPushButton(CLIPBOARD_ACTION_LABEL, self)
+        self._generate_button = QPushButton(GENERATE_ACTION_LABEL, self)
         self._footer = QLabel(config_summary(config), self)
 
         self.setWindowTitle("Bee's Anki Exporter")
@@ -311,8 +313,72 @@ class ExporterDialog(QDialog):
         showWarning(f"Bee's Anki Exporter failed.\n\n{error}", parent=self)
 
 
-def register_toolbar_link() -> None:
-    _replace_hook_callback(gui_hooks.top_toolbar_did_init_links, _add_toolbar_link)
+def register_tools_menu() -> None:
+    tools_menu = _get_tools_menu()
+    if tools_menu is None:
+        return
+
+    _remove_existing_tools_menu(tools_menu)
+
+    submenu = QMenu(TOOLS_MENU_TITLE, tools_menu)
+    submenu.addAction(
+        _create_tools_action(
+            submenu, GENERATE_ACTION_LABEL, generate_yomitan_dictionary
+        )
+    )
+    submenu.addAction(
+        _create_tools_action(
+            submenu,
+            CLIPBOARD_ACTION_LABEL,
+            export_known_words_to_clipboard,
+        )
+    )
+    submenu.addAction(
+        _create_tools_action(submenu, RERUN_WIZARD_ACTION_LABEL, rerun_setup_wizard)
+    )
+    tools_menu.addMenu(submenu)
+    setattr(mw, TOOLS_MENU_ATTR, submenu)
+
+
+def export_known_words_to_clipboard() -> None:
+    config = _prepare_export()
+    if config is None:
+        return
+
+    QueryOp(
+        parent=mw,
+        op=lambda col: build_known_word_list(col, config),
+        success=_on_clipboard_ready,
+    ).with_progress("Building known-word list...").failure(
+        lambda error: _show_export_error(error, parent=mw)
+    ).run_in_background()
+
+
+def generate_yomitan_dictionary() -> None:
+    config = _prepare_export()
+    if config is None:
+        return
+
+    QueryOp(
+        parent=mw,
+        op=lambda col: _build_dictionary_export(col, config),
+        success=lambda result: _on_dictionary_export_ready(config, result),
+    ).with_progress("Building Yomitan dictionary...").failure(
+        lambda error: _show_export_error(error, parent=mw)
+    ).run_in_background()
+
+
+def rerun_setup_wizard() -> None:
+    if not getattr(mw, "col", None):
+        showWarning("Open a profile and collection before using Bee's Anki Exporter.")
+        return
+
+    wizard = FirstRunWizard(
+        mw,
+        build_wizard_seed_config(mw.col),
+        list_deck_names(mw.col),
+    )
+    wizard.exec()
 
 
 def open_main_dialog() -> None:
@@ -329,17 +395,6 @@ def open_main_dialog() -> None:
     dialog.exec()
 
 
-def _add_toolbar_link(links: list[str], toolbar: Toolbar) -> None:
-    links.append(
-        toolbar.create_link(
-            TOOLBAR_COMMAND,
-            "Bee's Anki Exporter",
-            open_main_dialog,
-            tip="Open Bee's Anki Exporter",
-        )
-    )
-
-
 def _ensure_configured() -> AddonConfig | None:
     try:
         return load_config(mw.col)
@@ -351,14 +406,102 @@ def _ensure_configured() -> AddonConfig | None:
         return wizard.saved_config
 
 
-def _replace_hook_callback(hook: list[Any], callback: Any) -> None:
-    callback_key = _callback_key(callback)
-    hook[:] = [existing for existing in hook if _callback_key(existing) != callback_key]
-    hook.append(callback)
+def _prepare_export() -> AddonConfig | None:
+    if not getattr(mw, "col", None):
+        showWarning("Open a profile and collection before using Bee's Anki Exporter.")
+        return None
+
+    config = _ensure_configured()
+    if config is None:
+        return None
+
+    server_manager.apply_config(config)
+    return config
 
 
-def _callback_key(callback: Any) -> tuple[str | None, str | None]:
-    return (
-        getattr(callback, "__module__", None),
-        getattr(callback, "__qualname__", getattr(callback, "__name__", None)),
+def _build_dictionary_export(
+    col: Any, config: AddonConfig
+) -> tuple[list[str], dict[str, int | str], DictionaryArtifacts]:
+    words, stats = build_known_word_list(col, config)
+    artifacts = build_dictionary_artifacts(words, config)
+    return words, stats, artifacts
+
+
+def _on_clipboard_ready(result: tuple[list[str], dict[str, int | str]]) -> None:
+    words, _stats = result
+    QApplication.clipboard().setText("\n".join(words))
+    tooltip(f"Copied {len(words)} words to clipboard.")
+
+
+def _on_dictionary_export_ready(
+    config: AddonConfig,
+    result: tuple[list[str], dict[str, int | str], DictionaryArtifacts],
+) -> None:
+    _words, _stats, artifacts = result
+    if not server_manager.apply_config(config):
+        return
+
+    path = getSaveFile(
+        parent=mw,
+        title="Save Bee's Yomitan Dictionary",
+        dir_description="bee-yomitan-dictionary",
+        key="bees_anki_exporter_dictionary",
+        ext=".zip",
+        fname=_default_dictionary_name(config),
     )
+    if not path:
+        return
+
+    try:
+        Path(path).write_bytes(artifacts.zip_bytes)
+    except OSError as error:
+        showWarning(f"Could not save the dictionary ZIP.\n\n{error}", parent=mw)
+        return
+
+    tooltip(
+        "Saved. Import this ZIP into Yomitan. For updates: use Yomitan's dictionary update button while Anki is open.",
+        period=5000,
+    )
+
+
+def _default_dictionary_name(config: AddonConfig) -> str:
+    safe_deck = "".join(
+        character if character.isalnum() or character in {"-", "_"} else "_"
+        for character in config.deck_name
+    ).strip("_")
+    if not safe_deck:
+        safe_deck = "deck"
+    return f"bee-known-words-{safe_deck}.zip"
+
+
+def _show_export_error(error: Exception, parent: Any) -> None:
+    if isinstance(error, (ConfigValidationError, KnownWordBuildError)):
+        showWarning(str(error), parent=parent)
+        return
+    showWarning(f"Bee's Anki Exporter failed.\n\n{error}", parent=parent)
+
+
+def _get_tools_menu() -> Any | None:
+    form = getattr(mw, "form", None)
+    if form is None:
+        return None
+    return getattr(form, "menuTools", None)
+
+
+def _remove_existing_tools_menu(tools_menu: Any) -> None:
+    existing_menu = getattr(mw, TOOLS_MENU_ATTR, None)
+    if existing_menu is None:
+        return
+
+    menu_action = (
+        existing_menu.menuAction() if hasattr(existing_menu, "menuAction") else None
+    )
+    if menu_action is not None and hasattr(tools_menu, "removeAction"):
+        tools_menu.removeAction(menu_action)
+    delattr(mw, TOOLS_MENU_ATTR)
+
+
+def _create_tools_action(parent: Any, label: str, callback: Any) -> QAction:
+    action = QAction(label, parent)
+    action.triggered.connect(callback)
+    return action

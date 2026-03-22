@@ -8,7 +8,7 @@ import time
 from urllib.request import urlopen
 from zipfile import ZipFile
 
-from conftest import FakeCard, FakeCollection, FakeToolbar
+from conftest import FakeCard, FakeCollection
 from tests.yomitan_validation import validate_dictionary_archive, validate_index_data
 
 
@@ -86,7 +86,23 @@ def _configure_live_server(
     )
 
 
-def test_e2e_first_run_toolbar_click_exports_clipboard(addon_env, monkeypatch) -> None:
+def _get_exporter_menu(addon_env):
+    menu_action = addon_env.state.mw.form.menuTools.actions()[0]
+    menu = menu_action.menu()
+    assert menu is not None
+    return menu
+
+
+def _trigger_menu_action(addon_env, label: str) -> None:
+    exporter_menu = _get_exporter_menu(addon_env)
+    for action in exporter_menu.actions():
+        if action.text() == label:
+            action.trigger()
+            return
+    raise AssertionError(f"Missing menu action: {label}")
+
+
+def test_e2e_first_run_menu_click_exports_clipboard(addon_env, monkeypatch) -> None:
     package = addon_env.import_package()
     del package
     ui = addon_env.import_module("ui")
@@ -110,21 +126,8 @@ def test_e2e_first_run_toolbar_click_exports_clipboard(addon_env, monkeypatch) -
         self._finish()
         return self.DialogCode.Accepted
 
-    def dialog_exec(self) -> int:
-        self._on_clipboard_clicked()
-        return self.DialogCode.Accepted
-
     monkeypatch.setattr(ui.FirstRunWizard, "exec", wizard_exec)
-    monkeypatch.setattr(ui.ExporterDialog, "exec", dialog_exec)
-
-    toolbar = FakeToolbar()
-    links: list[str] = []
-    __import__("sys").modules["aqt"].gui_hooks.top_toolbar_did_init_links[0](
-        links, toolbar
-    )
-    assert links == ["<a>Bee's Anki Exporter</a>"]
-
-    toolbar.created_links[0][2]()
+    _trigger_menu_action(addon_env, ui.CLIPBOARD_ACTION_LABEL)
 
     assert ui.QApplication.clipboard().text == "犬\n猫\n鳥"
     assert addon_env.state.write_config_calls[-1][1]["deckName"] == "Japanese"
@@ -155,21 +158,10 @@ def test_e2e_profile_start_generate_zip_and_serve_live_endpoints(
     addon_env.state.mw.col = _build_collection(known_words, deck_name="Japanese")
     addon_env.state.save_file_path = str(tmp_path / "bee-known-words-japanese.zip")
 
-    def dialog_exec(self) -> int:
-        self._on_generate_clicked()
-        return self.DialogCode.Accepted
-
-    monkeypatch.setattr(ui.ExporterDialog, "exec", dialog_exec)
-
     try:
         port = _configure_live_server(server, addon_env, base_config)
 
-        toolbar = FakeToolbar()
-        links: list[str] = []
-        __import__("sys").modules["aqt"].gui_hooks.top_toolbar_did_init_links[0](
-            links, toolbar
-        )
-        toolbar.created_links[0][2]()
+        _trigger_menu_action(addon_env, ui.GENERATE_ACTION_LABEL)
 
         saved_path = Path(addon_env.state.save_file_path)
         assert saved_path.exists()

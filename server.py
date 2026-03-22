@@ -13,7 +13,7 @@ from aqt import gui_hooks, mw
 from aqt.utils import showWarning
 
 from .config import AddonConfig, ConfigValidationError, load_config
-from .known_words import KnownWordBuildError, build_known_word_list
+from .known_words import build_known_word_list
 from .yomitan_dict import (
     DOWNLOAD_PATH,
     INDEX_PATH,
