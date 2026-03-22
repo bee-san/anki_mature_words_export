@@ -5,7 +5,7 @@ import sys
 
 import pytest
 
-from conftest import FakeCollection
+from conftest import FakeCollection, FakeHook
 
 
 class FakeThread:
@@ -104,6 +104,20 @@ def test_register_server_hooks_replaces_stale_reload_callbacks(addon_env) -> Non
     ]
     assert sys.modules["aqt"].gui_hooks.profile_did_open[0] is not first_open
     assert sys.modules["aqt"].gui_hooks.profile_will_close[0] is not first_close
+
+
+def test_register_server_hooks_supports_hook_objects(addon_env) -> None:
+    server = addon_env.import_module("server")
+    open_hook = FakeHook()
+    close_hook = FakeHook()
+    sys.modules["aqt"].gui_hooks.profile_did_open = open_hook
+    sys.modules["aqt"].gui_hooks.profile_will_close = close_hook
+
+    server.register_server_hooks()
+    server.register_server_hooks()
+
+    assert open_hook._hooks == [server.server_manager.start_from_current_config]
+    assert close_hook._hooks == [server.server_manager.stop]
 
 
 def test_server_callback_key_handles_plain_functions(addon_env) -> None:

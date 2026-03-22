@@ -226,10 +226,43 @@ def register_server_hooks() -> None:
     server_manager.register_hooks()
 
 
-def _replace_hook_callback(hook: list[Any], callback: Any) -> None:
+def _replace_hook_callback(hook: Any, callback: Any) -> None:
     callback_key = _callback_key(callback)
-    hook[:] = [existing for existing in hook if _callback_key(existing) != callback_key]
-    hook.append(callback)
+    for existing in _hook_callbacks(hook):
+        if _callback_key(existing) == callback_key:
+            _remove_hook_callback(hook, existing)
+    _append_hook_callback(hook, callback)
+
+
+def _hook_callbacks(hook: Any) -> list[Any]:
+    if isinstance(hook, list):
+        return list(hook)
+    callbacks = getattr(hook, "_hooks", None)
+    if isinstance(callbacks, list):
+        return list(callbacks)
+    return []
+
+
+def _remove_hook_callback(hook: Any, callback: Any) -> None:
+    if hasattr(hook, "remove"):
+        try:
+            hook.remove(callback)
+        except ValueError:
+            pass
+        return
+    if isinstance(hook, list):
+        while callback in hook:
+            hook.remove(callback)
+
+
+def _append_hook_callback(hook: Any, callback: Any) -> None:
+    if hasattr(hook, "append"):
+        hook.append(callback)
+        return
+    if isinstance(hook, list):
+        hook.append(callback)
+        return
+    raise TypeError(f"Unsupported hook container: {type(hook)!r}")
 
 
 def _callback_key(callback: Any) -> tuple[str | None, str | None, str | None]:

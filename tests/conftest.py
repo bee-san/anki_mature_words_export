@@ -37,6 +37,20 @@ class FakeSignal:
             callback()
 
 
+class FakeHook:
+    def __init__(self, callbacks: list[Any] | None = None) -> None:
+        self._hooks = list(callbacks or [])
+
+    def append(self, callback: Any) -> None:
+        self._hooks.append(callback)
+
+    def remove(self, callback: Any) -> None:
+        self._hooks.remove(callback)
+
+    def count(self, callback: Any) -> int:
+        return self._hooks.count(callback)
+
+
 class FakeWidget:
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         self.enabled = True
