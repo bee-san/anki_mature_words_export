@@ -235,7 +235,9 @@ def test_export_actions_and_ensure_configured(addon_env, monkeypatch) -> None:
     ui.generate_yomitan_dictionary()
     assert apply_calls == [config, config, config]
     assert addon_env.state.query_ops[-2].progress_label == "Building known-word list..."
-    assert addon_env.state.query_ops[-1].progress_label == "Building Yomitan dictionary..."
+    assert (
+        addon_env.state.query_ops[-1].progress_label == "Building Yomitan dictionary..."
+    )
 
     monkeypatch.setattr(ui, "load_config", lambda col: config)
     assert original_ensure_configured() == config

@@ -186,7 +186,9 @@ class QMenu(FakeWidget):
         return list(self._actions)
 
     def removeAction(self, action: QAction) -> None:
-        self._actions = [existing for existing in self._actions if existing is not action]
+        self._actions = [
+            existing for existing in self._actions if existing is not action
+        ]
 
     def menuAction(self) -> QAction:
         return self._menu_action
