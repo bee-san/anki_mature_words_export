@@ -38,7 +38,7 @@ from .yomitan_dict import DictionaryArtifacts, build_dictionary_artifacts
 TOOLS_MENU_TITLE = "Bee's Anki Exporter"
 GENERATE_ACTION_LABEL = "Generate Auto-Updating Yomitan Frequency Dictionary"
 CLIPBOARD_ACTION_LABEL = "Export words"
-RERUN_WIZARD_ACTION_LABEL = "Bee's Anki Exporter Setup"
+RERUN_WIZARD_ACTION_LABEL = "Set up Export words"
 TOOLS_MENU_ATTR = "_bees_anki_exporter_tools_menu"
 
 
@@ -324,14 +324,19 @@ def register_tools_menu() -> None:
         CLIPBOARD_ACTION_LABEL,
         export_known_words_to_clipboard,
     )
-    setup_action = _create_tools_action(
-        tools_menu,
-        RERUN_WIZARD_ACTION_LABEL,
-        rerun_setup_wizard,
-    )
     tools_menu.addAction(export_action)
-    tools_menu.addAction(setup_action)
-    setattr(mw, TOOLS_MENU_ATTR, [export_action, setup_action])
+
+    actions = [export_action]
+    if _should_show_setup_action():
+        setup_action = _create_tools_action(
+            tools_menu,
+            RERUN_WIZARD_ACTION_LABEL,
+            rerun_setup_wizard,
+        )
+        tools_menu.addAction(setup_action)
+        actions.append(setup_action)
+
+    setattr(mw, TOOLS_MENU_ATTR, actions)
 
 
 def export_known_words_to_clipboard() -> None:
@@ -480,6 +485,15 @@ def _get_tools_menu() -> Any | None:
     if form is None:
         return None
     return getattr(form, "menuTools", None)
+
+
+def _should_show_setup_action() -> bool:
+    collection = getattr(mw, "col", None)
+    try:
+        load_config(collection)
+    except ConfigValidationError:
+        return True
+    return False
 
 
 def _remove_existing_tools_menu(tools_menu: Any) -> None:

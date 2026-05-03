@@ -172,6 +172,23 @@ def test_register_tools_menu_creates_direct_actions(addon_env) -> None:
     ]
 
 
+def test_register_tools_menu_hides_setup_when_config_is_valid(addon_env) -> None:
+    addon_env.state.config_data = {
+        "deckName": "Default",
+        "matureDays": 21,
+        "fieldName": "Expression",
+        "httpPort": 8766,
+        "includeSuspended": False,
+        "dedupeStrategy": "case_sensitive_trim",
+        "noteCardRule": "any_mature_card",
+    }
+    ui = addon_env.import_module("ui")
+    ui.register_tools_menu()
+
+    actions = get_tools_actions(addon_env)
+    assert [action.text() for action in actions] == [ui.CLIPBOARD_ACTION_LABEL]
+
+
 def test_register_tools_menu_replaces_stale_reload_menu(addon_env) -> None:
     first_ui = addon_env.import_module("ui")
     first_ui.register_tools_menu()
