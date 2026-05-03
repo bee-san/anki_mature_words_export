@@ -86,16 +86,12 @@ def _configure_live_server(
     )
 
 
-def _get_exporter_menu(addon_env):
-    menu_action = addon_env.state.mw.form.menuTools.actions()[0]
-    menu = menu_action.menu()
-    assert menu is not None
-    return menu
+def _get_tools_actions(addon_env):
+    return addon_env.state.mw.form.menuTools.actions()
 
 
 def _trigger_menu_action(addon_env, label: str) -> None:
-    exporter_menu = _get_exporter_menu(addon_env)
-    for action in exporter_menu.actions():
+    for action in _get_tools_actions(addon_env):
         if action.text() == label:
             action.trigger()
             return

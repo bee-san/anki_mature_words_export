@@ -23,18 +23,15 @@ def build_word_collection(
     )
 
 
-def get_exporter_menu(addon_env):
-    menu_action = addon_env.state.mw.form.menuTools.actions()[0]
-    menu = menu_action.menu()
-    assert menu is not None
-    return menu
+def get_tools_actions(addon_env):
+    return addon_env.state.mw.form.menuTools.actions()
 
 
-def find_action(menu, label: str):
-    for action in menu.actions():
+def find_action(actions, label: str):
+    for action in actions:
         if action.text() == label:
             return action
-    raise AssertionError(f"Missing action: {label}")
+    raise AssertionError(f"Missing Tools action: {label}")
 
 
 def test_first_run_wizard_validation_and_success(addon_env) -> None:
@@ -163,18 +160,13 @@ def test_exporter_dialog_generate_save_error(
     )
 
 
-def test_register_tools_menu_creates_submenu_and_actions(addon_env) -> None:
+def test_register_tools_menu_creates_direct_actions(addon_env) -> None:
     ui = addon_env.import_module("ui")
     ui.register_tools_menu()
     ui.register_tools_menu()
 
-    actions = addon_env.state.mw.form.menuTools.actions()
-    assert len(actions) == 1
-    assert actions[0].text() == ui.TOOLS_MENU_TITLE
-
-    submenu = get_exporter_menu(addon_env)
-    assert [action.text() for action in submenu.actions()] == [
-        ui.GENERATE_ACTION_LABEL,
+    actions = get_tools_actions(addon_env)
+    assert [action.text() for action in actions] == [
         ui.CLIPBOARD_ACTION_LABEL,
         ui.RERUN_WIZARD_ACTION_LABEL,
     ]
@@ -183,7 +175,7 @@ def test_register_tools_menu_creates_submenu_and_actions(addon_env) -> None:
 def test_register_tools_menu_replaces_stale_reload_menu(addon_env) -> None:
     first_ui = addon_env.import_module("ui")
     first_ui.register_tools_menu()
-    first_menu = get_exporter_menu(addon_env)
+    first_actions = get_tools_actions(addon_env)
 
     for name in list(sys.modules):
         if name == "anki_mature_words_export" or name.startswith(
@@ -194,11 +186,9 @@ def test_register_tools_menu_replaces_stale_reload_menu(addon_env) -> None:
     second_ui = addon_env.import_module("ui")
     second_ui.register_tools_menu()
 
-    actions = addon_env.state.mw.form.menuTools.actions()
-    assert len(actions) == 1
-    second_menu = actions[0].menu()
-    assert second_menu is not None
-    assert second_menu is not first_menu
+    actions = get_tools_actions(addon_env)
+    assert len(actions) == 2
+    assert actions != first_actions
 
 
 def test_export_actions_and_ensure_configured(addon_env, monkeypatch) -> None:

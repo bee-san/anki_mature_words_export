@@ -14,7 +14,6 @@ from aqt.qt import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMenu,
     QPushButton,
     QSizePolicy,
     QSpinBox,
@@ -38,8 +37,8 @@ from .yomitan_dict import DictionaryArtifacts, build_dictionary_artifacts
 
 TOOLS_MENU_TITLE = "Bee's Anki Exporter"
 GENERATE_ACTION_LABEL = "Generate Auto-Updating Yomitan Frequency Dictionary"
-CLIPBOARD_ACTION_LABEL = "Export Known Words to Clipboard"
-RERUN_WIZARD_ACTION_LABEL = "Rerun Wizard"
+CLIPBOARD_ACTION_LABEL = "Export words"
+RERUN_WIZARD_ACTION_LABEL = "Bee's Anki Exporter Setup"
 TOOLS_MENU_ATTR = "_bees_anki_exporter_tools_menu"
 
 
@@ -320,24 +319,19 @@ def register_tools_menu() -> None:
 
     _remove_existing_tools_menu(tools_menu)
 
-    submenu = QMenu(TOOLS_MENU_TITLE, tools_menu)
-    submenu.addAction(
-        _create_tools_action(
-            submenu, GENERATE_ACTION_LABEL, generate_yomitan_dictionary
-        )
+    export_action = _create_tools_action(
+        tools_menu,
+        CLIPBOARD_ACTION_LABEL,
+        export_known_words_to_clipboard,
     )
-    submenu.addAction(
-        _create_tools_action(
-            submenu,
-            CLIPBOARD_ACTION_LABEL,
-            export_known_words_to_clipboard,
-        )
+    setup_action = _create_tools_action(
+        tools_menu,
+        RERUN_WIZARD_ACTION_LABEL,
+        rerun_setup_wizard,
     )
-    submenu.addAction(
-        _create_tools_action(submenu, RERUN_WIZARD_ACTION_LABEL, rerun_setup_wizard)
-    )
-    tools_menu.addMenu(submenu)
-    setattr(mw, TOOLS_MENU_ATTR, submenu)
+    tools_menu.addAction(export_action)
+    tools_menu.addAction(setup_action)
+    setattr(mw, TOOLS_MENU_ATTR, [export_action, setup_action])
 
 
 def export_known_words_to_clipboard() -> None:
@@ -489,15 +483,16 @@ def _get_tools_menu() -> Any | None:
 
 
 def _remove_existing_tools_menu(tools_menu: Any) -> None:
-    existing_menu = getattr(mw, TOOLS_MENU_ATTR, None)
-    if existing_menu is None:
+    existing_entry = getattr(mw, TOOLS_MENU_ATTR, None)
+    if existing_entry is None:
         return
 
-    menu_action = (
-        existing_menu.menuAction() if hasattr(existing_menu, "menuAction") else None
-    )
-    if menu_action is not None and hasattr(tools_menu, "removeAction"):
-        tools_menu.removeAction(menu_action)
+    entries = existing_entry if isinstance(existing_entry, list) else [existing_entry]
+    for entry in entries:
+        menu_action = entry.menuAction() if hasattr(entry, "menuAction") else None
+        action = menu_action or entry
+        if hasattr(tools_menu, "removeAction"):
+            tools_menu.removeAction(action)
     delattr(mw, TOOLS_MENU_ATTR)
 
 
