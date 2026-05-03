@@ -324,9 +324,15 @@ def register_tools_menu() -> None:
         CLIPBOARD_ACTION_LABEL,
         export_known_words_to_clipboard,
     )
+    generate_action = _create_tools_action(
+        tools_menu,
+        GENERATE_ACTION_LABEL,
+        generate_yomitan_dictionary,
+    )
     tools_menu.addAction(export_action)
+    tools_menu.addAction(generate_action)
 
-    actions = [export_action]
+    actions = [export_action, generate_action]
     if _should_show_setup_action():
         setup_action = _create_tools_action(
             tools_menu,

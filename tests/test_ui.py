@@ -168,6 +168,7 @@ def test_register_tools_menu_creates_direct_actions(addon_env) -> None:
     actions = get_tools_actions(addon_env)
     assert [action.text() for action in actions] == [
         ui.CLIPBOARD_ACTION_LABEL,
+        ui.GENERATE_ACTION_LABEL,
         ui.RERUN_WIZARD_ACTION_LABEL,
     ]
 
@@ -186,7 +187,10 @@ def test_register_tools_menu_hides_setup_when_config_is_valid(addon_env) -> None
     ui.register_tools_menu()
 
     actions = get_tools_actions(addon_env)
-    assert [action.text() for action in actions] == [ui.CLIPBOARD_ACTION_LABEL]
+    assert [action.text() for action in actions] == [
+        ui.CLIPBOARD_ACTION_LABEL,
+        ui.GENERATE_ACTION_LABEL,
+    ]
 
 
 def test_register_tools_menu_replaces_stale_reload_menu(addon_env) -> None:
@@ -204,7 +208,7 @@ def test_register_tools_menu_replaces_stale_reload_menu(addon_env) -> None:
     second_ui.register_tools_menu()
 
     actions = get_tools_actions(addon_env)
-    assert len(actions) == 2
+    assert len(actions) == 3
     assert actions != first_actions
 
 
